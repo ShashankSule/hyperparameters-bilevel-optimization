@@ -325,12 +325,12 @@ def run_experiment(noise_type="gaussian", sigma=0.05):
         else add_rician_noise(G_true, sigma)
 
     mu_init    = 0.5
-    gd_steps   = 100
-    gn_steps   = 100
-    ep_steps   = 100
+    gd_steps   = 500
+    gn_steps   = 500
+    ep_steps   = 500
     gd_lr      = 0.12
     ep_lr      = 0.02
-    ep_beta    = 1e-4
+    ep_beta    = 1e-5
 
     print(f"  [{noise_type}] running GD ...")
     hist_gd = gradient_descent_mu(y, t, mu_init=mu_init, lr=gd_lr, n_steps=gd_steps)
@@ -353,10 +353,7 @@ def make_figure():
 
     fig = plt.figure(figsize=(22, 12), facecolor=BG)
     fig.suptitle(
-        "Bilevel Optimisation  ·  Mixture-of-Exponentials  ·  Three Outer Solvers\n"
-        r"Upper: $\min_{\mu\geq 0}\|y^*-G(\hat{x}(\mu))\|^2$   "
-        r"Lower: $\hat{x}(\mu)=\arg\min_x\|y^*-G(x)\|^2+\mu\|x\|^2$   "
-        r"Backward: $d\hat{x}/d\mu=-H^{-1}\hat{x}$",
+        "Bilevel Optimisation  ·  Mixture-of-Exponentials  ·  Three Outer Solvers\n",
         color=C_TRUE, fontsize=14, y=0.985)
 
     gs_outer = gridspec.GridSpec(2, 1, figure=fig, hspace=0.52,
