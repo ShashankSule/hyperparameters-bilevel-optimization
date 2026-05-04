@@ -314,10 +314,10 @@ def ep_gradient_descent_mu(y, t, x_star, mu_init=1.0, beta=0.01, lr=0.1, n_steps
 # 7.  Synthetic experiment
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_experiment(noise_type="gaussian", sigma=0.05):
+def run_experiment(noise_type="gaussian", sigma=0.00):
     t       = torch.linspace(0.05, 3.0, 60)
     c_true  = torch.tensor([0.7, 0.3])
-    lam_true= torch.tensor([0.4, 2.5])
+    lam_true= torch.tensor([0.4, 0.5])
     x_star  = torch.cat([c_true, lam_true])
     G_true  = biexponential(t, c_true, lam_true)
 
