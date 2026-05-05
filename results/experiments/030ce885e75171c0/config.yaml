@@ -1,0 +1,57 @@
+experiment:
+  c0: 0.7
+  c1_values:
+  - 0.2
+  - 0.4
+  - 0.6
+  - 0.8
+  noise_types:
+  - gaussian
+  - rician
+  n_realizations: 1
+  sigma: 0.05
+  base_seed: 42
+lambda0:
+  min: 0.004
+  max: 0.02
+  samples: 2
+lambda1:
+  min: 0.004
+  max: 0.02
+  samples: 2
+t:
+  min: 0.05
+  max: 3.0
+  samples: 32
+solver:
+  methods:
+  - gd
+  - gn
+  - ep
+  mu_init: 0.5
+  outer_steps: 100
+  gd_lr: 0.12
+  ep_lr: 0.02
+  ep_beta: 1.0e-05
+  lower_max_iter: 300
+  lower_tol: 1.0e-09
+  progress: false
+parallel:
+  enabled: true
+  num_workers: 64
+  chunksize: 1
+  maxtasksperchild: 100
+  torch_num_threads: 1
+tracking:
+  root_dir: results/experiments
+  experiment_id: 030ce885e75171c0
+  config_snapshot_name: config.yaml
+  summary_every: 1
+  experiment_dir: results/experiments/030ce885e75171c0
+output:
+  jsonl_name: rician_sweep.jsonl
+  json_name: rician_sweep.json
+  resume: true
+  finalize_json: true
+  jsonl_path: results/experiments/030ce885e75171c0/rician_sweep.jsonl
+  json_path: results/experiments/030ce885e75171c0/rician_sweep.json

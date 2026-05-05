@@ -2,19 +2,19 @@ experiment:
   c0: 0.7
   c1_values: [0.2, 0.4, 0.6, 0.8]
   noise_types: ["gaussian", "rician"]
-  n_realizations: 1
+  n_realizations: 10
   sigma: 0.05
   base_seed: 42
 
 lambda0:
   min: 0.004
   max: 0.02
-  samples: 2
+  samples: 20
 
 lambda1:
   min: 0.004
   max: 0.02
-  samples: 2
+  samples: 20
 
 t:
   min: 0.05
@@ -46,7 +46,7 @@ tracking:
   summary_every: 1
 
 output:
-  jsonl_name: "rician_sweep.jsonl"
-  json_name: "rician_sweep.json"
+  jsonl_name: "sweep.jsonl"
+  json_name: "sweep.json"
   resume: true
   finalize_json: true
