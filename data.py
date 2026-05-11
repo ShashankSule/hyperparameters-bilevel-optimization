@@ -18,6 +18,50 @@ def jacobian_biexp(t: torch.Tensor, c: torch.Tensor, lam: torch.Tensor) -> torch
     return torch.stack([e0, e1, -c[0] * t * e0, -c[1] * t * e1], dim=1)
 
 
+def biexponential_three_param(
+    t: torch.Tensor,
+    c1: torch.Tensor | float,
+    lambda1: torch.Tensor | float,
+    lambda2: torch.Tensor | float,
+) -> torch.Tensor:
+    """Evaluate c1 exp(-lambda1 t) + (1 - c1) exp(-lambda2 t)."""
+    return c1 * torch.exp(-lambda1 * t) + (1.0 - c1) * torch.exp(-lambda2 * t)
+
+
+def jacobian_biexp_three_param(
+    t: torch.Tensor,
+    c1: torch.Tensor | float,
+    lambda1: torch.Tensor | float,
+    lambda2: torch.Tensor | float,
+) -> torch.Tensor:
+    """Return the Jacobian with columns [dG/dc1, dG/dlambda1, dG/dlambda2]."""
+    e1 = torch.exp(-lambda1 * t)
+    e2 = torch.exp(-lambda2 * t)
+    return torch.stack([e1 - e2, -c1 * t * e1, -(1.0 - c1) * t * e2], dim=1)
+
+
+def biexponential_three_param_T2(
+    t: torch.Tensor,
+    c1: torch.Tensor | float,
+    T21: torch.Tensor | float,
+    T22: torch.Tensor | float,
+) -> torch.Tensor:
+    """Evaluate c1 exp(-t / T21) + (1 - c1) exp(-t / T22)."""
+    return c1 * torch.exp(-t / T21) + (1.0 - c1) * torch.exp(-t / T22)
+
+
+def jacobian_biexp_three_param_T2(
+    t: torch.Tensor,
+    c1: torch.Tensor | float,
+    T21: torch.Tensor | float,
+    T22: torch.Tensor | float,
+) -> torch.Tensor:
+    """Return the Jacobian with columns [dG/dc1, dG/dT21, dG/dT22]."""
+    e1 = torch.exp(-t / T21)
+    e2 = torch.exp(-t / T22)
+    return torch.stack([e1 - e2, c1 * t * e1 / (T21**2), (1.0 - c1) * t * e2 / (T22**2)], dim=1)
+
+
 def add_gaussian_noise(signal: torch.Tensor, sigma: float) -> torch.Tensor:
     """Add iid Gaussian noise with standard deviation sigma."""
     return signal + sigma * torch.randn_like(signal)
@@ -93,3 +137,35 @@ def make_synthetic_observation(
         raise ValueError(f"Unknown noise_type: {noise_type!r}")
 
     return g_true, y
+
+
+def make_synthetic_observation_three_param(
+    c1_true: float,
+    lambda1_true: float,
+    lambda2_true: float,
+    t: torch.Tensor,
+    sigma: float,
+    seed: int | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return the noiseless and iid Gaussian-noisy three-parameter signals."""
+    if seed is not None:
+        set_noise_seed(seed)
+
+    g_true = biexponential_three_param(t, c1_true, lambda1_true, lambda2_true)
+    return g_true, add_gaussian_noise(g_true, sigma)
+
+
+def make_synthetic_observation_three_param_T2(
+    c1_true: float,
+    T21_true: float,
+    T22_true: float,
+    t: torch.Tensor,
+    sigma: float,
+    seed: int | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return the noiseless and iid Gaussian-noisy three-parameter T2 signals."""
+    if seed is not None:
+        set_noise_seed(seed)
+
+    g_true = biexponential_three_param_T2(t, c1_true, T21_true, T22_true)
+    return g_true, add_gaussian_noise(g_true, sigma)

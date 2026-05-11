@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from scipy.optimize import least_squares
 
 from data import biexponential, jacobian_biexp
 
@@ -54,6 +55,161 @@ def _iter_range(n_steps: int, desc: str, progress: bool):
     if progress and tqdm is not None:
         return tqdm(range(n_steps), desc=desc)
     return range(n_steps)
+
+
+def _to_numpy_1d(value: torch.Tensor | np.ndarray | list[float]) -> np.ndarray:
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu().numpy().astype(float, copy=False).reshape(-1)
+    return np.asarray(value, dtype=float).reshape(-1)
+
+
+def direct_nlls_to_physical(
+    z: np.ndarray | list[float],
+    *,
+    lambda_max: float = 0.05,
+) -> np.ndarray:
+    """Map box-constrained solver variables [c1, p1, q] to [c1, p1, p2]."""
+    z_arr = np.asarray(z, dtype=float)
+    c1, p1, q = z_arr
+    p2 = p1 + q * (float(lambda_max) - p1)
+    return np.array([c1, p1, p2], dtype=float)
+
+
+def direct_nlls_to_solver(
+    params: np.ndarray | list[float],
+    *,
+    lambda_max: float = 0.05,
+) -> np.ndarray:
+    """Map physical parameters [c1, p1, p2] to solver variables."""
+    c1, p1, p2 = np.asarray(params, dtype=float)
+    denom = max(float(lambda_max) - float(p1), 1e-12)
+    q = (float(p2) - float(p1)) / denom
+    return np.array([c1, p1, np.clip(q, 0.0, 1.0)], dtype=float)
+
+
+def random_direct_nlls_init(
+    rng: np.random.Generator,
+    *,
+    lambda_min: float = 0.004,
+    lambda_max: float = 0.05,
+) -> np.ndarray:
+    """Draw a feasible random [c1, p1, p2] initialization."""
+    c1 = rng.uniform(0.0, 1.0)
+    p1 = rng.uniform(float(lambda_min), float(lambda_max))
+    q = rng.uniform(0.0, 1.0)
+    return direct_nlls_to_physical([c1, p1, q], lambda_max=lambda_max)
+
+
+def direct_nlls_residual(
+    z: np.ndarray,
+    t: np.ndarray,
+    y: np.ndarray,
+    *,
+    lambda_max: float = 0.05,
+    use_inverses: bool = False,
+) -> np.ndarray:
+    """Residual for the three-parameter constrained NLLS problem."""
+    c1, p1, p2 = direct_nlls_to_physical(z, lambda_max=lambda_max)
+    if use_inverses:
+        return c1 * np.exp(-t / p1) + (1.0 - c1) * np.exp(-t / p2) - y
+    return c1 * np.exp(-p1 * t) + (1.0 - c1) * np.exp(-p2 * t) - y
+
+
+def direct_nlls_jacobian(
+    z: np.ndarray,
+    t: np.ndarray,
+    y: np.ndarray,
+    *,
+    lambda_max: float = 0.05,
+    use_inverses: bool = False,
+) -> np.ndarray:
+    """Analytic residual Jacobian with respect to [c1, p1, q]."""
+    del y
+    c1, p1, q = np.asarray(z, dtype=float)
+    p2 = p1 + q * (float(lambda_max) - p1)
+
+    if use_inverses:
+        e1 = np.exp(-t / p1)
+        e2 = np.exp(-t / p2)
+        dg_dp1 = c1 * t * e1 / (p1**2)
+        dg_dp2 = (1.0 - c1) * t * e2 / (p2**2)
+    else:
+        e1 = np.exp(-p1 * t)
+        e2 = np.exp(-p2 * t)
+        dg_dp1 = -c1 * t * e1
+        dg_dp2 = -(1.0 - c1) * t * e2
+
+    dg_dc1 = e1 - e2
+    dp2_dp1 = 1.0 - q
+    dp2_dq = float(lambda_max) - p1
+
+    return np.column_stack(
+        [
+            dg_dc1,
+            dg_dp1 + dg_dp2 * dp2_dp1,
+            dg_dp2 * dp2_dq,
+        ]
+    )
+
+
+def solve_direct_nlls(
+    y: torch.Tensor | np.ndarray | list[float],
+    t: torch.Tensor | np.ndarray | list[float],
+    *,
+    x_init: np.ndarray | list[float] | None = None,
+    seed: int | None = None,
+    lambda_min: float = 0.004,
+    lambda_max: float = 0.05,
+    max_nfev: int | None = 300,
+    ftol: float = 1e-10,
+    xtol: float = 1e-10,
+    gtol: float = 1e-10,
+    use_inverses: bool = False,
+) -> dict[str, object]:
+    """Solve the direct constrained NLLS recovery problem from one initialization."""
+    t_np = _to_numpy_1d(t)
+    y_np = _to_numpy_1d(y)
+    if t_np.shape != y_np.shape:
+        raise ValueError(f"t and y must have the same shape, got {t_np.shape} and {y_np.shape}.")
+
+    rng = np.random.default_rng(seed)
+    if x_init is None:
+        x_init_arr = random_direct_nlls_init(rng, lambda_min=lambda_min, lambda_max=lambda_max)
+    else:
+        x_init_arr = np.asarray(x_init, dtype=float).reshape(3)
+
+    lower = np.array([0.0, float(lambda_min), 0.0], dtype=float)
+    upper = np.array([1.0, float(lambda_max), 1.0], dtype=float)
+    z0 = np.clip(direct_nlls_to_solver(x_init_arr, lambda_max=lambda_max), lower, upper)
+    result = least_squares(
+        lambda z: direct_nlls_residual(z, t_np, y_np, lambda_max=lambda_max, use_inverses=use_inverses),
+        z0,
+        jac=lambda z: direct_nlls_jacobian(z, t_np, y_np, lambda_max=lambda_max, use_inverses=use_inverses),
+        bounds=(lower, upper),
+        method="trf",
+        max_nfev=max_nfev,
+        ftol=ftol,
+        xtol=xtol,
+        gtol=gtol,
+    )
+    x_hat = direct_nlls_to_physical(result.x, lambda_max=lambda_max)
+    residual = np.asarray(result.fun, dtype=float)
+    rss = float(np.sum(residual**2))
+    return {
+        "x_init": x_init_arr,
+        "x_hat": x_hat,
+        "z_hat": result.x,
+        "residual": residual,
+        "rss": rss,
+        "cost": float(result.cost),
+        "success": bool(result.success),
+        "status": int(result.status),
+        "message": str(result.message),
+        "nfev": int(result.nfev),
+        "njev": int(result.njev) if result.njev is not None else None,
+        "optimality": float(result.optimality),
+        "active_mask": result.active_mask.astype(int).tolist(),
+    }
 
 
 def lower_level_gn_ep(
@@ -323,11 +479,17 @@ def ep_gradient_descent_mu(
 __all__ = [
     "XhatModule",
     "default_x_init",
+    "direct_nlls_jacobian",
+    "direct_nlls_residual",
+    "direct_nlls_to_physical",
+    "direct_nlls_to_solver",
     "ep_gradient_descent_mu",
     "gauss_newton_mu",
     "gradient_descent_mu",
     "inv_sp",
     "lower_level_gn_ep",
+    "random_direct_nlls_init",
+    "solve_direct_nlls",
     "sp",
     "sp_d",
 ]

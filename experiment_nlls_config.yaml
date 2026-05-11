@@ -1,0 +1,49 @@
+experiment:
+  use_inverses: true
+  c1_values: [0.1, 0.3, 0.5, 0.7, 0.9]
+  n_realizations: 10
+  n_initializations: 10
+  sigma: 0.05
+  base_seed: 42
+  init_seed_offset: 1000000
+
+lambda:
+  min: 0.004
+  max: 0.05
+  samples: 10
+
+T2:
+  min: 50.0
+  max: 250.0
+  samples: 10
+
+t:
+  min: 0.05
+  max: 3.0
+  samples: 32
+
+solver:
+  max_nfev: 300
+  ftol: 1.0e-10
+  xtol: 1.0e-10
+  gtol: 1.0e-10
+
+parallel:
+  enabled: true
+  num_workers: 64
+  chunksize: 1
+  maxtasksperchild: 100
+  torch_num_threads: 1
+
+tracking:
+  root_dir: "results/experiments"
+  experiment_id: null
+  config_snapshot_name: "config.yaml"
+  summary_every: 100
+
+output:
+  jsonl_name: "nlls_sweep_T2.jsonl"
+  json_name: "nlls_sweep_T2.json"
+  best_json_name: "nlls_best_T2.json"
+  resume: true
+  finalize_json: true
