@@ -6,6 +6,18 @@ import numpy as np
 import torch
 
 
+DEFAULT_RNG = np.random.default_rng()
+
+
+def _resolve_rng(rng: np.random.Generator | None) -> np.random.Generator:
+    return DEFAULT_RNG if rng is None else rng
+
+
+def _normal_like(signal: torch.Tensor, rng: np.random.Generator) -> torch.Tensor:
+    noise = rng.standard_normal(size=tuple(signal.shape))
+    return torch.as_tensor(noise, dtype=signal.dtype, device=signal.device)
+
+
 def biexponential(t: torch.Tensor, c: torch.Tensor, lam: torch.Tensor) -> torch.Tensor:
     """Evaluate c0 exp(-lambda0 t) + c1 exp(-lambda1 t)."""
     return c[0] * torch.exp(-lam[0] * t) + c[1] * torch.exp(-lam[1] * t)
@@ -62,15 +74,27 @@ def jacobian_biexp_three_param_T2(
     return torch.stack([e1 - e2, c1 * t * e1 / (T21**2), (1.0 - c1) * t * e2 / (T22**2)], dim=1)
 
 
-def add_gaussian_noise(signal: torch.Tensor, sigma: float) -> torch.Tensor:
+def add_gaussian_noise(
+    signal: torch.Tensor,
+    sigma: float,
+    *,
+    rng: np.random.Generator | None = None,
+) -> torch.Tensor:
     """Add iid Gaussian noise with standard deviation sigma."""
-    return signal + sigma * torch.randn_like(signal)
+    noise_rng = _resolve_rng(rng)
+    return signal + sigma * _normal_like(signal, noise_rng)
 
 
-def add_rician_noise(signal: torch.Tensor, sigma: float) -> torch.Tensor:
+def add_rician_noise(
+    signal: torch.Tensor,
+    sigma: float,
+    *,
+    rng: np.random.Generator | None = None,
+) -> torch.Tensor:
     """Add Rician noise by perturbing real and imaginary channels."""
-    nr = sigma * torch.randn_like(signal)
-    ni = sigma * torch.randn_like(signal)
+    noise_rng = _resolve_rng(rng)
+    nr = sigma * _normal_like(signal, noise_rng)
+    ni = sigma * _normal_like(signal, noise_rng)
     return torch.sqrt((signal + nr) ** 2 + ni**2)
 
 
@@ -110,29 +134,22 @@ def make_lambda_grid(
     return make_range_grid(range_config, dtype=dtype, device=device)
 
 
-def set_noise_seed(seed: int) -> None:
-    """Seed torch and numpy before generating a noise realization."""
-    torch.manual_seed(int(seed))
-    np.random.seed(int(seed))
-
-
 def make_synthetic_observation(
     c_true: torch.Tensor,
     lam_true: torch.Tensor,
     t: torch.Tensor,
     noise_type: str,
     sigma: float,
-    seed: int | None = None,
+    rng: np.random.Generator | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Return the noiseless signal and one noisy observation."""
-    if seed is not None:
-        set_noise_seed(seed)
+    noise_rng = _resolve_rng(rng)
 
     g_true = biexponential(t, c_true, lam_true)
     if noise_type == "gaussian":
-        y = add_gaussian_noise(g_true, sigma)
+        y = add_gaussian_noise(g_true, sigma, rng=noise_rng)
     elif noise_type == "rician":
-        y = add_rician_noise(g_true, sigma)
+        y = add_rician_noise(g_true, sigma, rng=noise_rng)
     else:
         raise ValueError(f"Unknown noise_type: {noise_type!r}")
 
@@ -145,14 +162,13 @@ def make_synthetic_observation_three_param(
     lambda2_true: float,
     t: torch.Tensor,
     sigma: float,
-    seed: int | None = None,
+    rng: np.random.Generator | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Return the noiseless and iid Gaussian-noisy three-parameter signals."""
-    if seed is not None:
-        set_noise_seed(seed)
+    noise_rng = _resolve_rng(rng)
 
     g_true = biexponential_three_param(t, c1_true, lambda1_true, lambda2_true)
-    return g_true, add_gaussian_noise(g_true, sigma)
+    return g_true, add_gaussian_noise(g_true, sigma, rng=noise_rng)
 
 
 def make_synthetic_observation_three_param_T2(
@@ -161,11 +177,10 @@ def make_synthetic_observation_three_param_T2(
     T22_true: float,
     t: torch.Tensor,
     sigma: float,
-    seed: int | None = None,
+    rng: np.random.Generator | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Return the noiseless and iid Gaussian-noisy three-parameter T2 signals."""
-    if seed is not None:
-        set_noise_seed(seed)
+    noise_rng = _resolve_rng(rng)
 
     g_true = biexponential_three_param_T2(t, c1_true, T21_true, T22_true)
-    return g_true, add_gaussian_noise(g_true, sigma)
+    return g_true, add_gaussian_noise(g_true, sigma, rng=noise_rng)

@@ -257,6 +257,7 @@ def run_one_task(task: dict[str, Any]) -> dict[str, Any]:
     solver_config = config["solver"]
     param_config = parameter_config(config)
     sigma = float(experiment["sigma"])
+    observation_rng = np.random.default_rng(int(task["observation_seed"]))
 
     if task["use_inverses"]:
         g_true, y = make_synthetic_observation_three_param_T2(
@@ -265,7 +266,7 @@ def run_one_task(task: dict[str, Any]) -> dict[str, Any]:
             task["param2_true"],
             t,
             sigma,
-            seed=int(task["observation_seed"]),
+            rng=observation_rng,
         )
     else:
         g_true, y = make_synthetic_observation_three_param(
@@ -274,7 +275,7 @@ def run_one_task(task: dict[str, Any]) -> dict[str, Any]:
             task["param2_true"],
             t,
             sigma,
-            seed=int(task["observation_seed"]),
+            rng=observation_rng,
         )
 
     start_time = time.perf_counter()

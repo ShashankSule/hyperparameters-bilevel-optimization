@@ -158,13 +158,14 @@ def run_one_task(task: dict[str, Any]) -> dict[str, Any]:
         device=t.device,
     )
     x_star = torch.cat([c_true, lam_true])
+    observation_rng = np.random.default_rng(int(task["seed"]))
     g_true, y = make_synthetic_observation(
         c_true,
         lam_true,
         t,
         task["noise_type"],
         float(experiment["sigma"]),
-        seed=int(task["seed"]),
+        rng=observation_rng,
     )
 
     start_time = time.perf_counter()
