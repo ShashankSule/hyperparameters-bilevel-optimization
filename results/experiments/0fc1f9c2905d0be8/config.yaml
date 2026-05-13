@@ -1,52 +1,57 @@
 experiment:
   c0: 0.5
-  c1_values: [0.1, 0.3, 0.5, 0.7, 0.9]
-  noise_types: ["gaussian"]
+  c1_values:
+  - 0.1
+  - 0.3
+  - 0.5
+  - 0.7
+  - 0.9
+  noise_types:
+  - gaussian
   n_realizations: 10
   sigma: 0.2
   base_seed: 42
-
 lambda0:
   min: 0.004
   max: 0.02
   samples: 20
-
 lambda1:
   min: 0.004
   max: 0.02
   samples: 20
-
 t:
   min: 0.0
   max: 100.0
   samples: 32
-
 solver:
-  methods: ["gd", "gn", "ep"]
+  methods:
+  - gd
+  - gn
+  - ep
   mu_init: 0.5
   outer_steps: 300
   gd_lr: 0.12
   ep_lr: 0.02
-  ep_beta: 1.0e-5
+  ep_beta: 1.0e-05
   lower_max_iter: 300
-  lower_tol: 1.0e-9
+  lower_tol: 1.0e-09
   progress: false
-
 parallel:
   enabled: true
   num_workers: 64
   chunksize: 1
   maxtasksperchild: 100
   torch_num_threads: 1
-
 tracking:
-  root_dir: "results/experiments"
-  experiment_id: null
-  config_snapshot_name: "config.yaml"
+  root_dir: results/experiments
+  experiment_id: 0fc1f9c2905d0be8
+  config_snapshot_name: config.yaml
   summary_every: 1
-
+  experiment_dir: results/experiments/0fc1f9c2905d0be8
 output:
-  jsonl_name: "sweep.jsonl"
-  json_name: "sweep.json"
+  jsonl_name: sweep.jsonl
+  json_name: sweep.json
   resume: true
   finalize_json: true
+  jsonl_path: results/experiments/0fc1f9c2905d0be8/sweep.jsonl
+  json_path: results/experiments/0fc1f9c2905d0be8/sweep.json

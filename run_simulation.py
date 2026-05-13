@@ -11,6 +11,7 @@ from itertools import product
 from typing import Any
 
 import torch
+import numpy as np
 
 from data import make_lambda_grid, make_synthetic_observation, make_time_grid
 from optimization import ep_gradient_descent_mu, gauss_newton_mu, gradient_descent_mu
@@ -52,25 +53,33 @@ def make_tasks(config: dict[str, Any]) -> list[dict[str, Any]]:
     lambda0_values = make_lambda_grid(config["lambda0"]).tolist()
     lambda1_values = make_lambda_grid(config["lambda1"]).tolist()
 
+    # Build the full job grid and spawn deterministic seeds per job (per realization)
+    n_c1 = len(experiment["c1_values"])
+    n_l0 = len(lambda0_values)
+    n_l1 = len(lambda1_values)
+    n_noise = len(experiment["noise_types"])
+    n_reals = int(experiment["n_realizations"])
+
+    total_jobs = n_c1 * n_l0 * n_l1 * n_noise * n_reals
+    base_seed = int(experiment.get("base_seed", 0))
+    ss = np.random.SeedSequence(base_seed)
+    children = ss.spawn(total_jobs)
+    observation_seeds = [int(child.generate_state(1)[0]) for child in children]
+
     tasks = []
     task_index = 0
-    for job_index, (c1, lambda0, lambda1, noise_type, realization) in enumerate(
-        product(
-            experiment["c1_values"],
-            lambda0_values,
-            lambda1_values,
-            experiment["noise_types"],
-            range(int(experiment["n_realizations"])),
-        )
+    job_index = 0
+    for c1, lambda0, lambda1, noise_type, realization in product(
+        experiment["c1_values"], lambda0_values, lambda1_values, experiment["noise_types"], range(n_reals)
     ):
-        seed = int(experiment.get("base_seed", 0)) + job_index
+        observation_seed = observation_seeds[job_index]
         for method in methods:
             tasks.append(
                 {
                     "task_index": task_index,
                     "job_index": job_index,
                     "method": method,
-                    "seed": seed,
+                    "seed": int(observation_seed),
                     "realization": int(realization),
                     "noise_type": noise_type,
                     "c0_true": float(experiment["c0"]),
@@ -80,6 +89,7 @@ def make_tasks(config: dict[str, Any]) -> list[dict[str, Any]]:
                 }
             )
             task_index += 1
+        job_index += 1
     return tasks
 
 
@@ -169,7 +179,10 @@ def run_one_task(task: dict[str, Any]) -> dict[str, Any]:
     )
 
     start_time = time.perf_counter()
-    hist = run_solver(task["method"], y, t, x_star, solver_config)
+    # Deterministic per-task init seed for reproducible random first starts.
+    init_seed_offset = int(experiment.get("init_seed_offset", 1_000_000))
+    init_seed = int(task.get("seed", 0)) + init_seed_offset
+    hist = run_solver(task["method"], y, t, x_star, solver_config, init_seed=init_seed)
     runtime_seconds = time.perf_counter() - start_time
 
     return make_result_row(
@@ -221,7 +234,14 @@ def iter_result_rows(
         yield from pool.imap_unordered(run_one_task_safe, tasks, chunksize=chunksize)
 
 
-def run_solver(method: str, y: torch.Tensor, t: torch.Tensor, x_star: torch.Tensor, solver_config: dict[str, Any]):
+def run_solver(
+    method: str,
+    y: torch.Tensor,
+    t: torch.Tensor,
+    x_star: torch.Tensor,
+    solver_config: dict[str, Any],
+    init_seed: int | None = None,
+):
     """Dispatch one configured outer solver."""
     common_kwargs = {
         "mu_init": float(solver_config["mu_init"]),
@@ -230,16 +250,25 @@ def run_solver(method: str, y: torch.Tensor, t: torch.Tensor, x_star: torch.Tens
         "lower_tol": float(solver_config.get("lower_tol", 1e-9)),
         "progress": bool(solver_config.get("progress", False)),
     }
+    def _with_seed(callable_fn, /, *args, **kwargs):
+        # Helper to pass the init_seed into solver call if supported.
+        return callable_fn(*args, init_seed=kwargs.pop("init_seed", None), **kwargs)
+
+    init_seed: int | None = None
+    # Allow caller to override initial-seed behavior
+    if "init_seed" in solver_config:
+        init_seed = int(solver_config.get("init_seed"))
 
     if method == "gd":
         return SOLVERS[method](
             y,
             t,
             lr=float(solver_config["gd_lr"]),
+            init_seed=init_seed,
             **common_kwargs,
         )
     if method == "gn":
-        return SOLVERS[method](y, t, **common_kwargs)
+        return SOLVERS[method](y, t, init_seed=init_seed, **common_kwargs)
     if method == "ep":
         return SOLVERS[method](
             y,
@@ -247,6 +276,7 @@ def run_solver(method: str, y: torch.Tensor, t: torch.Tensor, x_star: torch.Tens
             x_star=x_star,
             beta=float(solver_config["ep_beta"]),
             lr=float(solver_config["ep_lr"]),
+            init_seed=init_seed,
             **common_kwargs,
         )
     raise ValueError(f"Unknown solver method: {method!r}")

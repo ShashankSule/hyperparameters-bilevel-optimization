@@ -41,6 +41,36 @@ def default_x_init(
     return torch.tensor([0.6, 0.4, 0.5, 2.0], dtype=dtype, device=device)
 
 
+def random_bounded_x_init(
+    rng: np.random.Generator,
+    t: torch.Tensor,
+    *,
+    c_min: float = 0.0,
+    c_max: float = 1.0,
+    lambda_min: float | None = None,
+    lambda_max: float | None = None,
+    dtype: torch.dtype = torch.float32,
+    device: torch.device | str | None = None,
+) -> torch.Tensor:
+    """Sample a feasible positive `x_init` = [c0, c1, lambda0, lambda1].
+
+    By default amplitudes are sampled in [0,1] and decay/scale parameters are
+    sampled from the time-grid range `t` when available.
+    """
+    if lambda_min is None:
+        lambda_min = float(t.min().item()) if isinstance(t, torch.Tensor) else float(min(t))
+    if lambda_max is None:
+        lambda_max = float(t.max().item()) if isinstance(t, torch.Tensor) else float(max(t))
+
+    c0 = float(rng.uniform(c_min, c_max))
+    c1 = float(rng.uniform(c_min, c_max))
+    lam0 = float(rng.uniform(lambda_min, lambda_max))
+    lam1 = float(rng.uniform(lambda_min, lambda_max))
+
+    arr = np.array([c0, c1, lam0, lam1], dtype=float)
+    return torch.tensor(arr, dtype=dtype, device=device)
+
+
 def _as_x_init(x_init: torch.Tensor | None, t: torch.Tensor) -> torch.Tensor:
     if x_init is None:
         return default_x_init(dtype=t.dtype, device=t.device)
@@ -325,10 +355,15 @@ def gradient_descent_mu(
     lower_max_iter: int = 300,
     lower_tol: float = 1e-9,
     progress: bool = False,
+    init_seed: int | None = None,
 ) -> dict[str, list]:
     """Optimize log_mu with a manually computed implicit-differentiation gradient."""
     log_mu = torch.tensor(float(np.log(mu_init)), dtype=t.dtype, device=t.device)
-    x_init = default_x_init(dtype=t.dtype, device=t.device)
+    if init_seed is not None:
+        rng = np.random.default_rng(int(init_seed))
+        x_init = random_bounded_x_init(rng, t, dtype=t.dtype, device=t.device)
+    else:
+        x_init = default_x_init(dtype=t.dtype, device=t.device)
     hist = {"mu": [], "V": [], "xhat": []}
 
     for _ in _iter_range(n_steps, "outer loop step", progress):
@@ -371,10 +406,15 @@ def gauss_newton_mu(
     lower_max_iter: int = 300,
     lower_tol: float = 1e-9,
     progress: bool = False,
+    init_seed: int | None = None,
 ) -> dict[str, list]:
     """Optimize mu with a scalar Gauss-Newton step and positivity line search."""
     mu = torch.tensor(float(mu_init), dtype=t.dtype, device=t.device)
-    x_init = default_x_init(dtype=t.dtype, device=t.device)
+    if init_seed is not None:
+        rng = np.random.default_rng(int(init_seed))
+        x_init = random_bounded_x_init(rng, t, dtype=t.dtype, device=t.device)
+    else:
+        x_init = default_x_init(dtype=t.dtype, device=t.device)
     hist = {"mu": [], "V": [], "xhat": []}
 
     for _ in _iter_range(n_steps, "outer loop step", progress):
@@ -426,11 +466,16 @@ def ep_gradient_descent_mu(
     lower_max_iter: int = 300,
     lower_tol: float = 1e-9,
     progress: bool = False,
+    init_seed: int | None = None,
 ) -> dict[str, list]:
     """Update mu with an equilibrium-propagation gradient estimate."""
     mu = torch.tensor(float(mu_init), dtype=t.dtype, device=t.device)
     x_star = x_star.to(dtype=t.dtype, device=t.device)
-    x_init = default_x_init(dtype=t.dtype, device=t.device)
+    if init_seed is not None:
+        rng = np.random.default_rng(int(init_seed))
+        x_init = random_bounded_x_init(rng, t, dtype=t.dtype, device=t.device)
+    else:
+        x_init = default_x_init(dtype=t.dtype, device=t.device)
     hist = {"mu": [], "V": [], "xhat": []}
 
     for _ in _iter_range(n_steps, "outer loop step", progress):
