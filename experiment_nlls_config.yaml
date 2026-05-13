@@ -3,23 +3,23 @@ experiment:
   c1_values: [0.1, 0.3, 0.5, 0.7, 0.9]
   n_realizations: 10
   n_initializations: 10
-  sigma: 0.05
+  sigma: 0.5
   base_seed: 42
   init_seed_offset: 1000000
 
 lambda:
   min: 0.004
   max: 0.05
-  samples: 10
+  samples: 20
 
 T2:
   min: 50.0
   max: 250.0
-  samples: 10
+  samples: 20
 
 t:
-  min: 0.05
-  max: 3.0
+  min: 0.0
+  max: 100.0
   samples: 32
 
 solver:

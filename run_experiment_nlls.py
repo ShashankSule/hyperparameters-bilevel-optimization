@@ -12,6 +12,7 @@ from itertools import product
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 
 from data import (
@@ -148,6 +149,12 @@ def make_tasks(config: dict[str, Any]) -> list[dict[str, Any]]:
     param1_name, param2_name = parameter_field_names(inverse_mode)
     param_pairs = make_parameter_pairs(config)
 
+    # Spawn independent observation seeds for each realization.
+    n_observations = len(experiment["c1_values"]) * len(param_pairs) * n_realizations
+    root_ss = np.random.SeedSequence(int(base_seed))
+    observation_ss_children = root_ss.spawn(n_observations)
+    observation_seeds = [int(ss.generate_state(1)[0]) for ss in observation_ss_children]
+
     tasks = []
     task_index = 0
     job_index = 0
@@ -156,7 +163,7 @@ def make_tasks(config: dict[str, Any]) -> list[dict[str, Any]]:
         param_pairs,
         range(n_realizations),
     ):
-        observation_seed = base_seed + job_index
+        observation_seed = observation_seeds[job_index]
         for init_index in range(n_initializations):
             task = {
                 "task_index": task_index,
